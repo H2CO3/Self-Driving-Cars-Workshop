@@ -86,7 +86,7 @@ cv::Mat detect_edges(const cv::Mat &in_image) {
 }
 
 auto hough_transform(const cv::Mat &in_image)
-    -> std::tuple<std::vector<cv::Vec4i>, cv::Size> {
+    -> std::tuple<LineArray, cv::Size> {
 
     std::vector<cv::Vec4i> lines;
     cv::HoughLinesP(
@@ -133,6 +133,7 @@ auto filter_lane_marks(
         for (auto &line : range) {
             double rel_slope = std::abs(slope(line) - avg_slope);
             double rel_pivot_slope = std::abs(slope(pivot) - avg_slope);
+
             if (rel_slope < rel_pivot_slope * extreme_cluster_threshold) {
                 break;
             }
@@ -149,8 +150,7 @@ auto filter_lane_marks(
     };
 }
 
-auto pipeline(const cv::Mat &in_image)
-    -> std::tuple<LineArray, LineArray> {
+auto pipeline(const cv::Mat &in_image) -> std::tuple<LineArray, LineArray> {
     return in_image | mask | rgb_to_grayscale | blur | detect_edges | hough_transform | filter_lane_marks;
 }
 
