@@ -1,15 +1,61 @@
-#include <vector>
 #include <cstdio>
+#include <vector>
+#include <utility>
+#include <algorithm>
+#include <numeric>
+#include <iterator>
+#include <type_traits>
 #include <opencv2/opencv.hpp>
 
 
-namespace {
+namespace sdc {
+
+using LineArray = std::vector<cv::Vec4i>;
+
+template<typename T>
+struct reverse_view {
+    using const_iterator = std::reverse_iterator<typename T::const_iterator>;
+    using const_reference = typename T::const_reference;
+
+    const_iterator b;
+    const_iterator e;
+
+    reverse_view(const_iterator b_, const_iterator e_):
+        b(b_), e(e_) {}
+
+    const_iterator begin() const { return b; }
+    const_iterator end()   const { return e; }
+
+    const_reference front() const { return *b; }
+    const_reference back()  const { return *(e - 1); }
+};
+
+template<typename T>
+reverse_view<T> reversed(const T &c) {
+    return reverse_view<T>(c.rbegin(), c.rend());
+}
 
 template<typename Arg, typename Fn>
 auto operator|(const Arg &arg, Fn &&fn)
     -> typename std::result_of<Fn(const Arg &)>::type {
 
     return fn(arg);
+}
+
+void print_lines(const LineArray &lines) {
+    for (auto &line : lines) {
+        std::printf(
+            "(%d, %d)\t-> (%d, %d)\n",
+            line[0], line[1], line[2], line[3]
+        );
+    }
+}
+
+const std::size_t n_lines = 5;
+const double extreme_cluster_threshold = 0.85;
+
+double slope(const cv::Vec4i &v) {
+    return double(v[3] - v[1]) / (v[2] - v[0]);
 }
 
 cv::Mat mask(const cv::Mat &in_image) {
@@ -39,49 +85,88 @@ cv::Mat detect_edges(const cv::Mat &in_image) {
     return out_image;
 }
 
-cv::Mat hough_transform(const cv::Mat &in_image) {
+auto hough_transform(const cv::Mat &in_image)
+    -> std::tuple<std::vector<cv::Vec4i>, cv::Size> {
+
     std::vector<cv::Vec4i> lines;
     cv::HoughLinesP(
         in_image,
         lines,
-        1,
-        M_PI / 180,
+        2,
+        M_PI / 90,
         20,
         8
     );
 
-    auto size = in_image.size();
-    cv::Mat out_image = cv::Mat::zeros(
-        size.height,
-        size.width,
-        CV_8UC3
-    );
-
-    for (auto &line : lines) {
-        cv::line(
-            out_image,
-            cv::Point(line[0], line[1]),
-            cv::Point(line[2], line[3]),
-            cv::Scalar(0, 255, 0)
-        );
-    }
-
-    return out_image;
+    return { lines, in_image.size() };
 }
 
-cv::Mat pipeline(const cv::Mat &in_image) {
-    return in_image | mask | rgb_to_grayscale | blur | detect_edges | hough_transform;
+auto filter_lane_marks(
+    const std::tuple<LineArray, cv::Size> &input
+) -> std::tuple<LineArray, LineArray> {
+    auto lines = std::get<0>(input);
+    auto size = std::get<1>(input);
+
+    if (lines.size() < 2 * n_lines) {
+        return std::make_tuple(LineArray(), LineArray());
+    }
+
+    std::sort(
+        lines.begin(),
+        lines.end(),
+        [](auto &l1, auto &l2) { return slope(l1) < slope(l2); }
+    );
+
+    double avg_slope = std::accumulate(
+        lines.begin(),
+        lines.end(),
+        0.0,
+        [](auto tmp, auto &line) { return tmp + slope(line); }
+    );
+    avg_slope /= lines.size();
+
+    // selecting extreme clusters
+    auto cluster = [=](const auto &range) {
+        LineArray result;
+        auto &pivot = range.front();
+
+        for (auto &line : range) {
+            double rel_slope = std::abs(slope(line) - avg_slope);
+            double rel_pivot_slope = std::abs(slope(pivot) - avg_slope);
+            if (rel_slope < rel_pivot_slope * extreme_cluster_threshold) {
+                break;
+            }
+
+            result.push_back(line);
+        }
+
+        return result;
+    };
+
+    return {
+        cluster(lines),
+        cluster(reversed(lines))
+    };
+}
+
+auto pipeline(const cv::Mat &in_image)
+    -> std::tuple<LineArray, LineArray> {
+    return in_image | mask | rgb_to_grayscale | blur | detect_edges | hough_transform | filter_lane_marks;
 }
 
 }
 
 int main(int argc, char *argv[]) {
     const char *in_filename = argv[1];
-    const char *out_filename = argv[2];
 
     auto in_image = cv::imread(in_filename, CV_LOAD_IMAGE_COLOR);
-    auto out_image = pipeline(in_image);
-    cv::imwrite(out_filename, out_image);
+    auto lines = sdc::pipeline(in_image);
+
+    std::printf("left lines:\n");
+    sdc::print_lines(std::get<0>(lines));
+
+    std::printf("right lines:\n");
+    sdc::print_lines(std::get<1>(lines));
 
     return 0;
 }
