@@ -85,10 +85,9 @@ cv::Mat detect_edges(const cv::Mat &in_image) {
     return out_image;
 }
 
-auto hough_transform(const cv::Mat &in_image)
-    -> std::tuple<LineArray, cv::Size> {
-
+LineArray hough_transform(const cv::Mat &in_image) {
     std::vector<cv::Vec4i> lines;
+
     cv::HoughLinesP(
         in_image,
         lines,
@@ -98,14 +97,11 @@ auto hough_transform(const cv::Mat &in_image)
         8
     );
 
-    return { lines, in_image.size() };
+    return lines;
 }
 
-auto filter_lane_marks(
-    const std::tuple<LineArray, cv::Size> &input
-) -> std::tuple<LineArray, LineArray> {
-    auto lines = std::get<0>(input);
-    auto size = std::get<1>(input);
+auto filter_lane_marks(LineArray lines)
+    -> std::tuple<LineArray, LineArray> {
 
     if (lines.size() < 2 * n_lines) {
         return std::make_tuple(LineArray(), LineArray());
