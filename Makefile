@@ -11,7 +11,7 @@ endif
 
 
 all:
-	$(CXX) $(CXFLAGS) $(PKGCONF) -o lane_detection lane_detection.cc
+	$(CXX) $(CXFLAGS) $(PKGCONF) -o sdc *.cc
 
 clean:
-	rm -rf lane_detection .DS_Store
+	rm -rf sdc .DS_Store
