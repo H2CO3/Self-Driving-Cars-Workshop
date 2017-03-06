@@ -39,16 +39,7 @@ Context<T> make_context(const Config &config, T value) {
 
 // Make pipelines look pretty
 template<typename Arg, typename Fn>
-auto operator|(const Arg &arg, Fn &&fn)
-    -> Context<
-        typename std::result_of<
-            Fn(
-                typename std::remove_pointer<decltype(Arg::config)>::type,
-                decltype(Arg::value)
-            )
-        >::type
-    > {
-
+auto operator|(const Arg &arg, Fn &&fn) {
     return make_context(*arg.config, fn(*arg.config, arg.value));
 }
 
